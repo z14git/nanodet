@@ -19,9 +19,12 @@ import pytorch_lightning as pl
 import torch
 
 from .rank_filter import rank_filter
+from loguru import logger
+
+logger.disable(__name__)
 
 
-def load_model_weight(model, checkpoint, logger):
+def load_model_weight(model, checkpoint):
     state_dict = checkpoint["state_dict"].copy()
     for k in checkpoint["state_dict"]:
         # convert average model weights
@@ -42,7 +45,7 @@ def load_model_weight(model, checkpoint, logger):
     for k in state_dict:
         if k in model_state_dict:
             if state_dict[k].shape != model_state_dict[k].shape:
-                logger.log(
+                logger.debug(
                     "Skip loading parameter {}, required shape{}, "
                     "loaded shape{}.".format(
                         k, model_state_dict[k].shape, state_dict[k].shape
@@ -50,10 +53,10 @@ def load_model_weight(model, checkpoint, logger):
                 )
                 state_dict[k] = model_state_dict[k]
         else:
-            logger.log("Drop parameter {}.".format(k))
+            logger.debug("Drop parameter {}.".format(k))
     for k in model_state_dict:
         if not (k in state_dict):
-            logger.log("No param {}.".format(k))
+            logger.debug("No param {}.".format(k))
             state_dict[k] = model_state_dict[k]
     model.load_state_dict(state_dict, strict=False)
 
