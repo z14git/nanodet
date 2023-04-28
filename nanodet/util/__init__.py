@@ -14,6 +14,7 @@ from .rank_filter import rank_filter
 from .scatter_gather import gather_results, scatter_kwargs
 from .util_mixins import NiceRepr
 from .visualization import Visualizer, overlay_bbox_cv
+from .trt import TRTModel
 
 __all__ = [
     "distance2bbox",
@@ -38,4 +39,5 @@ __all__ = [
     "overlay_bbox_cv",
     "collect_files",
     "convert_avg_params",
+    "TRTModel",
 ]
