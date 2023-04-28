@@ -18,6 +18,9 @@ import os
 import onnx
 import onnxsim
 import torch
+from onnx import helper, TensorProto
+import onnx.numpy_helper
+import numpy as np
 
 from nanodet.model.arch import build_model
 from nanodet.util import Logger, cfg, load_config, load_model_weight
@@ -68,6 +71,76 @@ def main(config, model_path, output_path, input_shape=(320, 320)):
     else:
         logger.log("simplify onnx failed")
 
+    modify_input(output_path, output_path, input_shape)
+    logger.log("finished modifying input")
+
+def modify_input(model_path, output_path, input_shape=(320, 320)):
+    model = onnx.load(model_path)
+    input_name = model.graph.input[0].name
+    # 创建一个新的输入
+    new_input_shape = [input_shape[0], input_shape[1], 3]
+    new_input = helper.make_tensor_value_info("new_input", TensorProto.FLOAT, new_input_shape)
+
+    # 添加一个维度扩展操作
+    expand_dims_node = helper.make_node(
+        'Unsqueeze',
+        inputs=['new_input'],
+        outputs=['expanded_input'],
+        axes=[0],
+        name='expand_dims_node'
+    )
+
+    # 添加一个转置操作
+    transpose_node = helper.make_node(
+        'Transpose',
+        inputs=['expanded_input'],
+        outputs=['transposed_input'],
+        perm=[0, 3, 1, 2],
+        name='transpose_node'
+    )
+
+    # 添加 normalize 操作
+    mean = np.array([103.53, 116.28, 123.675], dtype=np.float32).reshape((3, 1, 1))
+    std = np.array([57.375, 57.12, 58.395], dtype=np.float32).reshape((3, 1, 1))
+
+    mean_initializer = onnx.numpy_helper.from_array(mean, name='mean')
+    std_initializer = onnx.numpy_helper.from_array(std, name='std')
+
+    model.graph.initializer.extend([mean_initializer, std_initializer])
+
+    normalize_node = helper.make_node(
+        'Sub',
+        inputs=['transposed_input', 'mean'],
+        outputs=['normalized_input'],
+        name='normalize_sub_node'
+    )
+
+    normalize_div_node = helper.make_node(
+        'Div',
+        inputs=['normalized_input', 'std'],
+        outputs=[input_name],
+        name='normalize_div_node'
+    )
+
+    # 将新的输入和扩展维度、转置操作以及 normalize 操作添加到图中
+    model.graph.input.insert(0, new_input)
+    model.graph.node.insert(0, expand_dims_node)
+    model.graph.node.insert(1, transpose_node)
+    model.graph.node.insert(2, normalize_node)
+    model.graph.node.insert(3, normalize_div_node)
+
+    # 找到悬空的输入节点 "data"
+    input_to_remove = None
+    for input_tensor in model.graph.input:
+        if input_tensor.name == 'data':
+            input_to_remove = input_tensor
+            break
+
+    # 从 graph.input 中移除悬空的输入节点
+    if input_to_remove is not None:
+        model.graph.input.remove(input_to_remove)
+
+    onnx.save(model, output_path)
 
 def parse_args():
     parser = argparse.ArgumentParser(
