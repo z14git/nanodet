@@ -48,10 +48,10 @@ class TRTModel:
             self.trt_engine)
 
         # Load labels
-        self.classes = list(
+        self.class_names = list(
             map(lambda x: x.strip(),
                 open(label_path, 'r').readlines()))
-        self.num_classes = len(self.classes)
+        self.num_classes = len(self.class_names)
         self.prob_threshold = prob_threshold
         self.iou_threshold = iou_threshold
 
@@ -73,7 +73,6 @@ class TRTModel:
                  math.ceil(self.input_shape[1] / self.strides[i])),
                 self.strides[i])
             self.mlvl_anchors.append(anchors)
-        self.keep_ratio = False
 
     def _make_grid(self, featmap_size, stride):
         feat_h, feat_w = featmap_size
@@ -131,10 +130,10 @@ class TRTModel:
         return img, newh, neww, top, left
 
     def preprocess(self, img):
-        img, newh, neww, top, left = self.resize_image(img, self.keep_ratio)
-        return img, newh, neww, top, left
+        return cv2.resize(img, self.input_shape)
 
     def post_process(self, preds):
+        preds = preds.reshape(-1, self.num_classes + (self.reg_max + 1) * 4)
         mlvl_bboxes = []
         mlvl_scores = []
         ind = 0
@@ -163,8 +162,7 @@ class TRTModel:
         confidences = np.max(mlvl_scores, axis=1)  ####max_class_confidence
 
         indices = cv2.dnn.NMSBoxes(bboxes_wh.tolist(), confidences.tolist(),
-                                   self.prob_threshold,
-                                   self.iou_threshold).flatten()
+                                   self.prob_threshold, self.iou_threshold)
         if len(indices) > 0:
             mlvl_bboxes = mlvl_bboxes[indices]
             confidences = confidences[indices]
@@ -179,10 +177,10 @@ class TRTModel:
         x2 = points[:, 0] + distance[:, 2]
         y2 = points[:, 1] + distance[:, 3]
         if max_shape is not None:
-            x1 = np.clip(x1, 0, max_shape[1])
-            y1 = np.clip(y1, 0, max_shape[0])
-            x2 = np.clip(x2, 0, max_shape[1])
-            y2 = np.clip(y2, 0, max_shape[0])
+            x1 = np.clip(x1, 0, max_shape[1]) / max_shape[1]
+            y1 = np.clip(y1, 0, max_shape[0]) / max_shape[0]
+            x2 = np.clip(x2, 0, max_shape[1]) / max_shape[1]
+            y2 = np.clip(y2, 0, max_shape[0]) / max_shape[0]
         return np.stack([x1, y1, x2, y2], axis=-1)
 
     @staticmethod
@@ -241,7 +239,279 @@ class TRTModel:
         # Synchronize the stream
         self.stream.synchronize()
         # Return only the host outputs.
-        return [out.host for out in self.outputs]
+        return [out.host for out in self.outputs][0]
 
     def __call__(self, img: np.ndarray):
         return self.infer(img)
+
+    def visualize(self, img, bboxes, confidences, classIds):
+        font = cv2.FONT_HERSHEY_SIMPLEX
+        for i, bbox in enumerate(bboxes):
+            label = int(classIds[i])
+            color = (_COLORS[label] * 255).astype(np.uint8).tolist()
+            text = f"{self.class_names[label]}:{confidences[i]*100:.1f}%"
+            txt_color = (0, 0,
+                         0) if np.mean(_COLORS[label]) > 0.5 else (255, 255,
+                                                                   255)
+            txt_size = cv2.getTextSize(text, font, 0.5, 2)[0]
+            x1, y1, x2, y2 = bbox
+            x1 *= img.shape[1]
+            y1 *= img.shape[0]
+            x2 *= img.shape[1]
+            y2 *= img.shape[0]
+            cv2.rectangle(img, (int(x1), int(y1)), (int(x2), int(y2)), color,
+                          2)
+            cv2.rectangle(img, (int(x1), int(y1 - txt_size[1] - 2)),
+                          (int(x1 + txt_size[0]), int(y1)), color, -1)
+            cv2.putText(img,
+                        text, (int(x1), int(y1 - 2)),
+                        font,
+                        0.5,
+                        txt_color,
+                        thickness=1,
+                        lineType=cv2.LINE_AA)
+        return img
+
+
+_COLORS = (np.array([
+    0.000,
+    0.447,
+    0.741,
+    0.850,
+    0.325,
+    0.098,
+    0.929,
+    0.694,
+    0.125,
+    0.494,
+    0.184,
+    0.556,
+    0.466,
+    0.674,
+    0.188,
+    0.301,
+    0.745,
+    0.933,
+    0.635,
+    0.078,
+    0.184,
+    0.300,
+    0.300,
+    0.300,
+    0.600,
+    0.600,
+    0.600,
+    1.000,
+    0.000,
+    0.000,
+    1.000,
+    0.500,
+    0.000,
+    0.749,
+    0.749,
+    0.000,
+    0.000,
+    1.000,
+    0.000,
+    0.000,
+    0.000,
+    1.000,
+    0.667,
+    0.000,
+    1.000,
+    0.333,
+    0.333,
+    0.000,
+    0.333,
+    0.667,
+    0.000,
+    0.333,
+    1.000,
+    0.000,
+    0.667,
+    0.333,
+    0.000,
+    0.667,
+    0.667,
+    0.000,
+    0.667,
+    1.000,
+    0.000,
+    1.000,
+    0.333,
+    0.000,
+    1.000,
+    0.667,
+    0.000,
+    1.000,
+    1.000,
+    0.000,
+    0.000,
+    0.333,
+    0.500,
+    0.000,
+    0.667,
+    0.500,
+    0.000,
+    1.000,
+    0.500,
+    0.333,
+    0.000,
+    0.500,
+    0.333,
+    0.333,
+    0.500,
+    0.333,
+    0.667,
+    0.500,
+    0.333,
+    1.000,
+    0.500,
+    0.667,
+    0.000,
+    0.500,
+    0.667,
+    0.333,
+    0.500,
+    0.667,
+    0.667,
+    0.500,
+    0.667,
+    1.000,
+    0.500,
+    1.000,
+    0.000,
+    0.500,
+    1.000,
+    0.333,
+    0.500,
+    1.000,
+    0.667,
+    0.500,
+    1.000,
+    1.000,
+    0.500,
+    0.000,
+    0.333,
+    1.000,
+    0.000,
+    0.667,
+    1.000,
+    0.000,
+    1.000,
+    1.000,
+    0.333,
+    0.000,
+    1.000,
+    0.333,
+    0.333,
+    1.000,
+    0.333,
+    0.667,
+    1.000,
+    0.333,
+    1.000,
+    1.000,
+    0.667,
+    0.000,
+    1.000,
+    0.667,
+    0.333,
+    1.000,
+    0.667,
+    0.667,
+    1.000,
+    0.667,
+    1.000,
+    1.000,
+    1.000,
+    0.000,
+    1.000,
+    1.000,
+    0.333,
+    1.000,
+    1.000,
+    0.667,
+    1.000,
+    0.333,
+    0.000,
+    0.000,
+    0.500,
+    0.000,
+    0.000,
+    0.667,
+    0.000,
+    0.000,
+    0.833,
+    0.000,
+    0.000,
+    1.000,
+    0.000,
+    0.000,
+    0.000,
+    0.167,
+    0.000,
+    0.000,
+    0.333,
+    0.000,
+    0.000,
+    0.500,
+    0.000,
+    0.000,
+    0.667,
+    0.000,
+    0.000,
+    0.833,
+    0.000,
+    0.000,
+    1.000,
+    0.000,
+    0.000,
+    0.000,
+    0.167,
+    0.000,
+    0.000,
+    0.333,
+    0.000,
+    0.000,
+    0.500,
+    0.000,
+    0.000,
+    0.667,
+    0.000,
+    0.000,
+    0.833,
+    0.000,
+    0.000,
+    1.000,
+    0.000,
+    0.000,
+    0.000,
+    0.143,
+    0.143,
+    0.143,
+    0.286,
+    0.286,
+    0.286,
+    0.429,
+    0.429,
+    0.429,
+    0.571,
+    0.571,
+    0.571,
+    0.714,
+    0.714,
+    0.714,
+    0.857,
+    0.857,
+    0.857,
+    0.000,
+    0.447,
+    0.741,
+    0.314,
+    0.717,
+    0.741,
+    0.50,
+    0.5,
+    0,
+]).astype(np.float32).reshape(-1, 3))
