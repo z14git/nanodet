@@ -3,6 +3,7 @@
 - https://github.com/NVIDIA/object-detection-tensorrt-example/blob/master/SSD_Model/utils/inference.py
 - https://stackoverflow.com/a/67492525
 - https://github.com/hpc203/nanodet-plus-opencv/blob/d3cba74e539bcd1e8bcc77695289e1c3aeeee6c0/onnxruntime/main.py
+- https://forums.developer.nvidia.com/t/how-to-use-tensorrt-by-the-multi-threading-package-of-python/123085/8
 """
 import numpy as np
 import cv2
