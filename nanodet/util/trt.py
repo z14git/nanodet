@@ -286,6 +286,11 @@ class TRTModel:
             y2 *= img.shape[0]
             cv2.rectangle(img, (int(x1), int(y1)), (int(x2), int(y2)), color,
                           2)
+            # 自动调整文本位置，使其在图像内
+            if y1 - txt_size[1] - 2 < 0:
+                y1 = txt_size[1] + 2
+            if x1 + txt_size[0] + 2 > img.shape[1]:
+                x1 = img.shape[1] - txt_size[0] - 2
             cv2.rectangle(img, (int(x1), int(y1 - txt_size[1] - 2)),
                           (int(x1 + txt_size[0]), int(y1)), color, -1)
             cv2.putText(img,
