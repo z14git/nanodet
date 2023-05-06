@@ -7,10 +7,12 @@
 import numpy as np
 import cv2
 import os
-import pycuda.driver as cuda
-import pycuda.autoinit  # This is needed for initializing CUDA driver
 import tensorrt as trt
+import pycuda.autoinit  # This is needed for initializing CUDA driver
+import pycuda.driver as cuda
 import math
+import threading
+import atexit
 
 TRT_LOGGER = trt.Logger()
 
@@ -36,6 +38,7 @@ class TRTModel:
                  iou_threshold=0.3) -> None:
         assert os.path.exists(engine_file_path)
         assert os.path.exists(label_path)
+        self.cfx = cuda.Device(0).make_context()
         with open(engine_file_path,
                   "rb") as f, trt.Runtime(TRT_LOGGER) as runtime:
             self.trt_engine = runtime.deserialize_cuda_engine(f.read())
@@ -73,6 +76,8 @@ class TRTModel:
                  math.ceil(self.input_shape[1] / self.strides[i])),
                 self.strides[i])
             self.mlvl_anchors.append(anchors)
+
+        self.registered = False
 
     def _make_grid(self, featmap_size, stride):
         feat_h, feat_w = featmap_size
@@ -132,7 +137,7 @@ class TRTModel:
     def preprocess(self, img):
         return cv2.resize(img, self.input_shape)
 
-    def post_process(self, preds):
+    def postprocess(self, preds):
         preds = preds.reshape(-1, self.num_classes + (self.reg_max + 1) * 4)
         mlvl_bboxes = []
         mlvl_scores = []
@@ -220,7 +225,13 @@ class TRTModel:
                 outputs.append(HostDeviceMem(host_mem, device_mem))
         return inputs, outputs, bindings, stream
 
-    def infer(self, img: np.ndarray):
+    def _infer(self, img: np.ndarray):
+        threading.Thread.__init__(self)
+        self.cfx.push()
+        if not self.registered:
+            self.registered = True
+            atexit.register(self.destroy)
+
         # Copy image data to host buffer
         np.copyto(self.inputs[0].host, img.ravel())
         # Transfer input data to the GPU.
@@ -238,11 +249,24 @@ class TRTModel:
         ]
         # Synchronize the stream
         self.stream.synchronize()
+
+        self.cfx.pop()
+
         # Return only the host outputs.
         return [out.host for out in self.outputs][0]
 
+    def destroy(self):
+        self.cfx.pop()
+
     def __call__(self, img: np.ndarray):
-        return self.infer(img)
+        return self._infer(img)
+
+    def infer(self, img: np.ndarray):
+        blob = self.preprocess(img)
+        outputs = self._infer(blob)
+        bboxes, confidences, classIds = self.postprocess(outputs)
+        self.visualize(img, bboxes, confidences, classIds)
+        return bboxes, confidences, classIds
 
     def visualize(self, img, bboxes, confidences, classIds):
         font = cv2.FONT_HERSHEY_SIMPLEX
