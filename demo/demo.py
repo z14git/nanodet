@@ -9,7 +9,7 @@ from nanodet.data.batch_process import stack_batch_img
 from nanodet.data.collate import naive_collate
 from nanodet.data.transform import Pipeline
 from nanodet.model.arch import build_model
-from nanodet.util import Logger, cfg, load_config, load_model_weight
+from nanodet.util import cfg, load_config, load_model_weight
 from nanodet.util.path import mkdir
 
 image_ext = [".jpg", ".jpeg", ".webp", ".bmp", ".png"]
@@ -35,12 +35,12 @@ def parse_args():
 
 
 class Predictor(object):
-    def __init__(self, cfg, model_path, logger, device="cuda:0"):
+    def __init__(self, cfg, model_path, device="cuda:0"):
         self.cfg = cfg
         self.device = device
         model = build_model(cfg.model)
         ckpt = torch.load(model_path, map_location=lambda storage, loc: storage)
-        load_model_weight(model, ckpt, logger)
+        load_model_weight(model, ckpt)
         if cfg.model.arch.backbone.name == "RepVGG":
             deploy_config = cfg.model
             deploy_config.arch.backbone.update({"deploy": True})
