@@ -63,7 +63,7 @@ data:
     img_path: /workspace/repos/dataset/train  #Please fill in train image path
     ann_path: /workspace/repos/dataset/train  #Please fill in train xml path
     input_size: [320,320] #[w,h]
-    keep_ratio: True
+    keep_ratio: False
     pipeline:
       perspective: 0.0
       scale: [0.6, 1.4]
@@ -82,7 +82,7 @@ data:
     img_path: /workspace/repos/dataset/val #Please fill in val image path
     ann_path: /workspace/repos/dataset/val #Please fill in val xml path
     input_size: [320,320] #[w,h]
-    keep_ratio: True
+    keep_ratio: False
     pipeline:
       normalize: [[103.53, 116.28, 123.675], [57.375, 57.12, 58.395]]
 device:
