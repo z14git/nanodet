@@ -262,11 +262,12 @@ class TRTModel:
     def __call__(self, img: np.ndarray):
         return self._infer(img)
 
-    def infer(self, img: np.ndarray):
+    def infer(self, img: np.ndarray, overlay=True):
         blob = self.preprocess(img)
         outputs = self._infer(blob)
         bboxes, confidences, classIds = self.postprocess(outputs)
-        self.visualize(img, bboxes, confidences, classIds)
+        if overlay:
+            self.visualize(img, bboxes, confidences, classIds)
         return bboxes, confidences, classIds
 
     def visualize(self, img, bboxes, confidences, classIds):
